@@ -27,8 +27,7 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install "git+https://github.com/MarckMorris/pyrrho@v0.2.1" "git+https://github.com/MarckMorris/strayform"
-          pip install "${{ matrix.mcp }}" -e ".[dev]"
+          pip install "${{ matrix.mcp }}" -e ".[dev,drift]"
       - name: Lint
         run: ruff check .
       - name: Test (unit + end to end against real OpenTofu)
@@ -46,7 +45,6 @@ jobs:
           terraform_wrapper: false
       - name: Install
         run: |
-          pip install "git+https://github.com/MarckMorris/pyrrho@v0.2.1"
           pip install -e ".[dev]"
       - name: End to end against real Terraform
         run: pytest -v tests/test_e2e.py

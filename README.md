@@ -1,5 +1,6 @@
 # tfminder
 
+[![PyPI](https://img.shields.io/pypi/v/tfminder.svg)](https://pypi.org/project/tfminder/)
 [![CI](https://github.com/MarckMorris/tfminder/actions/workflows/ci.yml/badge.svg)](https://github.com/MarckMorris/tfminder/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-green.svg)](LICENSE)
@@ -149,9 +150,7 @@ Terraform, strayform finds what went in around it.
 ## Quick start
 
 ```bash
-# pyrrho and strayform are not on PyPI yet, so install them first
-pip install "git+https://github.com/MarckMorris/pyrrho@v0.2.1" "git+https://github.com/MarckMorris/strayform"
-pip install "tfminder[drift] @ git+https://github.com/MarckMorris/tfminder"
+pip install "tfminder[drift]"      # drop [drift] if you don't need GCP drift scans
 
 cd your-infra-repo
 tfminder init                 # writes .tfminder.yaml, one workspace per directory with .tf files
@@ -213,7 +212,6 @@ shell and your cloud credentials can run `terraform apply` itself.
 ## Development
 
 ```bash
-pip install "git+https://github.com/MarckMorris/pyrrho@v0.2.1" "git+https://github.com/MarckMorris/strayform"
 pip install -e ".[dev,drift]"
 ruff check . && pytest        # e2e tests run when terraform or tofu is on PATH
 ```
