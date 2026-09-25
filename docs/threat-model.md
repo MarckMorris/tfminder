@@ -18,6 +18,9 @@
   `tfminder approve` in a pseudo-terminal, tfminder is advice, not a boundary. Give the agent tfminder's
   MCP tools and nothing that reaches the cloud directly. With Claude Code, deny `Bash(terraform:*)`,
   `Bash(tofu:*)`, `Bash(gcloud:*)` and `Bash(tfminder approve:*)` in settings.
+- **Credentials in the agent's host.** With the default `executor: local` the MCP server process runs
+  Terraform and needs cloud credentials. Use `executor: worker` so only `tfminder worker`, started by a
+  person, holds them.
 - **Over-privileged credentials.** tfminder runs Terraform with whatever credentials are in its
   environment. Use a plan-only identity for `tier: plan`; give apply rights only to the identity that runs
   `tfminder serve` at `tier: apply`, ideally short-lived (Workload Identity Federation, impersonation).

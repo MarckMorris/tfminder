@@ -63,6 +63,8 @@ class Config:
     binary: str
     workspaces: dict[str, Workspace]
     command_timeout: int = 1800
+    executor: str = "local"  # local: the MCP server runs terraform; worker: `tfminder worker` does
+    worker_wait_seconds: int = 900
 
     @property
     def data_dir(self) -> Path:
@@ -210,5 +212,11 @@ def load(path: Path | None = None) -> Config:
     timeout = data.get("command_timeout", 1800)
     if not isinstance(timeout, int) or timeout <= 0:
         raise ConfigError("command_timeout must be a positive integer (seconds)")
+    executor = str(data.get("executor", "local"))
+    if executor not in ("local", "worker"):
+        raise ConfigError("executor must be 'local' or 'worker'")
+    wait = data.get("worker_wait_seconds", 900)
+    if not isinstance(wait, int) or wait <= 0:
+        raise ConfigError("worker_wait_seconds must be a positive integer")
     return Config(root=root, tier=tier, binary=_find_binary(data.get("binary")), workspaces=workspaces,
-                  command_timeout=timeout)
+                  command_timeout=timeout, executor=executor, worker_wait_seconds=wait)

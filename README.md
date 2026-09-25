@@ -169,6 +169,28 @@ Inventory) with state: resources created by hand, resources in state that no lon
 and ready-to-paste `import {}` blocks. That closes the loop: tfminder watches what goes in through
 Terraform, strayform finds what went in around it.
 
+## Keep cloud credentials out of the agent's process
+
+By default the MCP server runs Terraform itself, so it needs cloud credentials. With
+
+```yaml
+executor: worker
+```
+
+it never runs Terraform. `review_plan`, `apply_approved` and `drift_scan` become jobs in `.tfminder/jobs/`,
+and a worker that **you** start in your own terminal, with your own credentials, executes them:
+
+```
+agent ──MCP──> tfminder serve ──job file──> tfminder worker (your terminal, your credentials) ──> terraform
+                   no credentials  <──result──        same policy, attestation and approval checks
+```
+
+The agent's host process holds no cloud credentials at all, and closing the worker window stops every
+change. It also fixes MCP hosts that sandbox their servers: with the Microsoft Store build of Claude
+Desktop on Windows, Terraform's provider plugins cannot start inside the MCP process (their loopback
+mTLS handshake fails), but they run fine in the worker. This was verified live from Claude Desktop against
+the Google provider.
+
 ## Quick start
 
 ```bash

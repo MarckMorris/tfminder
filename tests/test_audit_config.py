@@ -91,3 +91,4 @@ def test_check_writes_sarif(tmp_path):
     assert doc["version"] == "2.1.0"
     rules = {r["ruleId"] for r in doc["runs"][0]["results"]}
     assert {"GC001", "GC006"} <= rules
+

@@ -28,6 +28,10 @@ version: 1
 # What an AI agent may do through the MCP server: read | plan | apply
 tier: plan
 
+# local: the MCP server runs terraform (needs cloud credentials)
+# worker: `tfminder worker`, started by a person, runs it; the agent's process holds no credentials
+executor: local
+
 # terraform or tofu (auto-detected when omitted)
 # binary: terraform
 
@@ -307,6 +311,17 @@ def cmd_baseline(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_worker(args: argparse.Namespace) -> int:
+    from .worker import run_worker
+
+    svc = Service(_config(args))
+    try:
+        run_worker(svc, once=args.once)
+    except KeyboardInterrupt:
+        print("worker stopped")
+    return 0
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     from .server import serve
 
@@ -393,6 +408,10 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--output", "-o")
     s.add_argument("--note")
     s.set_defaults(fn=cmd_baseline)
+
+    s = sub.add_parser("worker", help="execute plans/applies queued by the MCP server (executor: worker)")
+    s.add_argument("--once", action="store_true", help="process the queue once and exit")
+    s.set_defaults(fn=cmd_worker)
 
     s = sub.add_parser("serve", help="run the MCP server on stdio")
     s.set_defaults(fn=cmd_serve)

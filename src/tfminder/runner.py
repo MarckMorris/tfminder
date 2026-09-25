@@ -15,10 +15,11 @@ MAX_OUTPUT = 20_000
 def _fill_windows_env(env: dict[str, str]) -> None:
     """Restore the variables Windows programs need when a parent stripped them.
 
-    MCP clients often start servers with a minimal environment. Terraform and its
-    providers are Go binaries, and Go cannot open sockets on Windows without
-    SYSTEMROOT, so the provider dies with "Plugin did not respond". Values that are
-    already set are left alone.
+    MCP clients often start servers with a minimal environment, and Go binaries such as
+    Terraform and its providers need SYSTEMROOT and friends to use the network on Windows.
+    Values that are already set are left alone. Note: this does not help when the MCP host
+    runs servers in a sandbox that breaks Terraform's provider plugins (the Microsoft Store
+    build of Claude Desktop); use ``executor: worker`` there.
     """
     home = os.path.expanduser("~")
     upper = {k.upper(): k for k in env}

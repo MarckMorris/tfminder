@@ -199,3 +199,69 @@ def test_baseline_roundtrip(repo):
     d = s.review("stack", "agent:test")
     doc = json.loads(s.baseline_from(d["id"]))
     assert doc["format"] == "pyrrho-baseline/v1"
+
+
+# -- executor: worker -------------------------------------------------------------------------------
+
+def _mcp_session(repo, fn):
+    from mcp import ClientSession, StdioServerParameters
+    from mcp.client.stdio import stdio_client
+
+    async def run():
+        params = StdioServerParameters(
+            command=sys.executable, args=["-m", "tfminder", "serve"],
+            env={**os.environ, "TFMINDER_CONFIG": str(repo / ".tfminder.yaml"), "TFMINDER_AGENT": "pytest"},
+        )
+        async with stdio_client(params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                return await fn(session)
+
+    return asyncio.run(run())
+
+
+async def _call(session, tool, args):
+    try:
+        res = await session.call_tool(tool, args)
+        failed = bool(getattr(res, "is_error", None) or getattr(res, "isError", None))
+        return failed, res.content[0].text
+    except Exception as exc:  # mcp 2.x raises on tool errors
+        return True, str(exc)
+
+
+def test_worker_executes_what_the_mcp_server_queues(repo):
+    import threading
+
+    from tfminder.worker import run_worker
+
+    cfg = repo / ".tfminder.yaml"
+    cfg.write_text(cfg.read_text().replace("tier: apply", "tier: apply\nexecutor: worker\nworker_wait_seconds: 120"))
+    worker_svc = Service(load(cfg))
+    threading.Thread(target=run_worker, args=(worker_svc,), kwargs={"log": lambda m: None}, daemon=True).start()
+
+    async def flow(session):
+        failed, text = await _call(session, "review_plan", {"workspace": "stack", "scope": ["terraform_data.*"]})
+        assert not failed, text
+        detail = json.loads(text)
+        assert detail["decision"] == "approval"
+        worker_svc.request_apply(detail["id"], "agent:pytest", "demo")
+        worker_svc.approve(detail["id"], "human:tester")
+        failed, text = await _call(session, "apply_approved", {"request_id": detail["id"]})
+        assert not failed, text
+        return detail["id"]
+
+    request_id = _mcp_session(repo, flow)
+    req = worker_svc.get(request_id)
+    assert req.status == "applied" and req.converged is True and req.created_by == "agent:pytest"
+
+
+def test_no_worker_gives_a_clear_error(repo):
+    cfg = repo / ".tfminder.yaml"
+    cfg.write_text(cfg.read_text().replace("tier: apply", "tier: apply\nexecutor: worker\nworker_wait_seconds: 2"))
+
+    async def flow(session):
+        return await _call(session, "review_plan", {"workspace": "stack"})
+
+    failed, text = _mcp_session(repo, flow)
+    assert failed and "tfminder worker" in text
+    assert not list((repo / ".tfminder" / "jobs").glob("*.job.json"))  # abandoned job cleaned up

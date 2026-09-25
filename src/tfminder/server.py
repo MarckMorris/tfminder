@@ -25,13 +25,14 @@ except ImportError:  # mcp 1.x
 from .config import Config, ConfigError
 from .service import Service, ServiceError
 from .store import StoreError
+from .worker import JobQueue, WorkerError
 
 
 def _call(fn: Any, *args: Any) -> Any:
     """Expected failures go back to the agent as a readable tool error, not a crash."""
     try:
         return fn(*args)
-    except (ServiceError, ConfigError, StoreError) as exc:
+    except (ServiceError, ConfigError, StoreError, WorkerError) as exc:
         raise ToolError(str(exc)) from exc
 
 INSTRUCTIONS = """\
@@ -50,6 +51,18 @@ def agent_actor() -> str:
 
 def build(config: Config, service: Service | None = None) -> FastMCP:
     svc = service or Service(config)
+    queue = JobQueue(config.data_dir) if config.executor == "worker" else None
+
+    def execute(op: str, **kwargs: Any) -> Any:
+        """Run locally, or hand the job to `tfminder worker` and wait for its result."""
+        if queue is None:
+            if op == "review":
+                return svc.review(actor=agent_actor(), **kwargs)
+            if op == "apply":
+                return svc.apply(kwargs["request_id"], agent_actor())
+            return svc.drift(kwargs["workspace"], agent_actor())
+        job = queue.submit(op, kwargs, agent_actor())
+        return queue.wait(job, config.worker_wait_seconds)
     mcp = FastMCP("tfminder", instructions=INSTRUCTIONS)
 
     @mcp.tool()
@@ -75,7 +88,7 @@ def build(config: Config, service: Service | None = None) -> FastMCP:
     def drift_scan(workspace: str) -> dict[str, Any]:
         """Compare live Google Cloud resources with Terraform state: resources created by hand (ClickOps),
         resources in state that no longer exist, IaC coverage, and ready-to-use import {} blocks."""
-        return _call(svc.drift, workspace, agent_actor())
+        return _call(lambda: execute("drift", workspace=workspace))
 
     if config.allows("plan"):
         @mcp.tool()
@@ -91,7 +104,8 @@ def build(config: Config, service: Service | None = None) -> FastMCP:
             scope: the Terraform addresses you intend to change, as glob patterns
             (for example ["google_compute_firewall.iap_ssh", "module.network.*"]). If the plan touches
             anything outside it, the change is flagged (RD007) and, by default, denied. Always declare it."""
-            return _call(svc.review, workspace, agent_actor(), justification, destroy, scope)
+            return _call(lambda: execute("review", workspace=workspace, justification=justification,
+                                         destroy=destroy, scope=scope))
 
         @mcp.tool()
         def submit_for_approval(request_id: str, justification: str) -> dict[str, Any]:
@@ -104,7 +118,7 @@ def build(config: Config, service: Service | None = None) -> FastMCP:
         def apply_approved(request_id: str) -> dict[str, Any]:
             """Apply a plan a human has approved. Applies exactly the reviewed plan file; fails if the approval
             expired, the plan file changed, or state moved since the plan."""
-            return _call(svc.apply, request_id, agent_actor())
+            return _call(lambda: execute("apply", request_id=request_id))
 
     return mcp
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.0
+
+- **`executor: worker`.** The MCP server queues review/apply/drift jobs and `tfminder worker`, started by a
+  person with their own credentials, executes them through the same Service. The agent's host process
+  never runs Terraform and never holds cloud credentials. Verified live from Claude Desktop (Microsoft
+  Store build, Windows) against the Google provider, where running Terraform inside the MCP process fails:
+  the provider's loopback mTLS handshake is rejected inside that sandbox.
+- The 0.2.0 note claiming the Windows environment restore fixed "Plugin did not respond" was wrong for that
+  case; the restore stays (it is harmless and needed by stripped environments) but the sandbox case needs
+  the worker.
+
 ## 0.2.0
 
 Deeper use of pyrrho and strayform, so tfminder is one control loop instead of three tools.
