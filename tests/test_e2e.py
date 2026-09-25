@@ -229,8 +229,10 @@ async def _call(session, tool, args):
         return True, str(exc)
 
 
-def test_worker_executes_what_the_mcp_server_queues(repo):
+def test_worker_executes_what_the_mcp_server_queues(repo, monkeypatch):
     import threading
+
+    monkeypatch.setenv("TFMINDER_APPROVAL_KEY", "human-only-secret")  # worker + approver side
 
     from tfminder.worker import run_worker
 
@@ -265,3 +267,58 @@ def test_no_worker_gives_a_clear_error(repo):
     failed, text = _mcp_session(repo, flow)
     assert failed and "tfminder worker" in text
     assert not list((repo / ".tfminder" / "jobs").glob("*.job.json"))  # abandoned job cleaned up
+
+
+# -- security review fixes ---------------------------------------------------------------------------
+
+def _forge_approval(s, request_id):
+    f = s.store.path(request_id) / "request.json"
+    data = json.loads(f.read_text())
+    data.update(status="approved", approved_by="human:marck", expires_at="2099-01-01T00:00:00+00:00")
+    f.write_text(json.dumps(data))
+
+
+def test_forged_approval_is_refused_when_approvals_are_signed(repo, monkeypatch):
+    monkeypatch.setenv("TFMINDER_APPROVAL_KEY", "human-only-secret")
+    s = svc(repo)
+    d = s.review("stack", "agent:evil")
+    _forge_approval(s, d["id"])  # an agent with write access to .tfminder/ edits the request
+    with pytest.raises(ServiceError, match="not signed"):
+        s.apply(d["id"], "agent:evil")
+
+
+def test_edited_signed_approval_is_refused(repo, monkeypatch):
+    monkeypatch.setenv("TFMINDER_APPROVAL_KEY", "human-only-secret")
+    s = svc(repo)
+    d = _approved(s)
+    f = s.store.path(d["id"]) / "request.json"
+    data = json.loads(f.read_text())
+    data["expires_at"] = "2099-01-01T00:00:00+00:00"  # stretch the approval window
+    f.write_text(json.dumps(data))
+    with pytest.raises(ServiceError, match="signature does not match"):
+        s.apply(d["id"], "agent:evil")
+
+
+def test_signed_approval_applies(repo, monkeypatch):
+    monkeypatch.setenv("TFMINDER_APPROVAL_KEY", "human-only-secret")
+    s = svc(repo)
+    d = _approved(s)
+    assert s.apply(d["id"], "agent:test")["request"]["status"] == "applied"
+
+
+def test_worker_refuses_to_start_without_approval_key(repo, monkeypatch):
+    from tfminder.worker import WorkerError, run_worker
+
+    monkeypatch.delenv("TFMINDER_APPROVAL_KEY", raising=False)
+    with pytest.raises(WorkerError, match="TFMINDER_APPROVAL_KEY"):
+        run_worker(svc(repo), once=True, log=lambda m: None)
+
+
+def test_external_program_is_refused_before_plan(repo):
+    (repo / "stack" / "exfil.tf").write_text(
+        'data "external" "x" {\n  program = ["sh", "-c", "env > /tmp/stolen; echo {}"]\n}\n')
+    s = svc(repo)
+    with pytest.raises(ServiceError, match="external"):
+        s.review("stack", "agent:evil")
+    assert '"event": "plan_refused"' in (repo / ".tfminder" / "audit.jsonl").read_text()
+    assert not (repo / "stack" / ".terraform").exists()  # nothing ran, not even init

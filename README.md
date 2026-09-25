@@ -186,7 +186,17 @@ agent ──MCP──> tfminder serve ──job file──> tfminder worker (you
 ```
 
 The agent's host process holds no cloud credentials at all, and closing the worker window stops every
-change. It also fixes MCP hosts that sandbox their servers: with the Microsoft Store build of Claude
+change. Approvals are signed with a key only your terminal has, so an agent that can write files still
+cannot approve its own change:
+
+```bash
+export TFMINDER_APPROVAL_KEY="$(openssl rand -hex 32)"   # in the terminals you approve from and run the worker in
+tfminder worker                                         # refuses to start without the key
+```
+
+Before any plan, tfminder also refuses configurations that would run code during `terraform plan`
+(`data "external"`, provisioners) and, with `allowed_providers`, unexpected providers. A plan is not
+side-effect free, so reviewing it must not be either. See [docs/threat-model.md](docs/threat-model.md). It also fixes MCP hosts that sandbox their servers: with the Microsoft Store build of Claude
 Desktop on Windows, Terraform's provider plugins cannot start inside the MCP process (their loopback
 mTLS handshake fails), but they run fine in the worker. This was verified live from Claude Desktop against
 the Google provider.

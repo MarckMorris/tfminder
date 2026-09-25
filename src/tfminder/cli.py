@@ -314,9 +314,14 @@ def cmd_baseline(args: argparse.Namespace) -> int:
 def cmd_worker(args: argparse.Namespace) -> int:
     from .worker import run_worker
 
+    from .worker import WorkerError
+
     svc = Service(_config(args))
     try:
-        run_worker(svc, once=args.once)
+        run_worker(svc, once=args.once, insecure=args.insecure)
+    except WorkerError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     except KeyboardInterrupt:
         print("worker stopped")
     return 0
@@ -411,6 +416,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("worker", help="execute plans/applies queued by the MCP server (executor: worker)")
     s.add_argument("--once", action="store_true", help="process the queue once and exit")
+    s.add_argument("--insecure", action="store_true", help="run without TFMINDER_APPROVAL_KEY (testing only)")
     s.set_defaults(fn=cmd_worker)
 
     s = sub.add_parser("serve", help="run the MCP server on stdio")

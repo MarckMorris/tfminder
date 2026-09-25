@@ -11,12 +11,14 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import secrets
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+REQUEST_ID = re.compile(r"\d{8}-\d{6}-[0-9a-f]{6}")
 STATUSES = ("reviewed", "pending", "approved", "rejected", "applying", "applied", "failed", "denied", "noop")
 
 
@@ -58,6 +60,7 @@ class Request:
     attestation_signed: bool = False
     converged: bool | None = None
     post_apply_changes: list[str] = field(default_factory=list)
+    approval_signature: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -79,7 +82,9 @@ class Store:
         return now().strftime("%Y%m%d-%H%M%S-") + secrets.token_hex(3)
 
     def path(self, request_id: str) -> Path:
-        if not request_id or "/" in request_id or "\\" in request_id or request_id.startswith("."):
+        # Exactly the shape new_id() produces. Anything looser invites traversal, including
+        # drive-relative names like "C:x" on Windows.
+        if not isinstance(request_id, str) or not REQUEST_ID.fullmatch(request_id):
             raise StoreError(f"invalid request id {request_id!r}")
         return self.dir / request_id
 

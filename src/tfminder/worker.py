@@ -26,7 +26,13 @@ import traceback
 from pathlib import Path
 from typing import Any, Callable
 
-OPERATIONS = ("review", "apply", "drift")
+OPERATIONS = ("review", "apply", "drift", "submit")
+ALLOWED_KWARGS = {
+    "review": {"workspace", "justification", "destroy", "scope"},
+    "apply": {"request_id"},
+    "drift": {"workspace"},
+    "submit": {"request_id", "justification"},
+}
 POLL_SECONDS = 0.5
 
 
@@ -94,10 +100,20 @@ class JobQueue:
         running.unlink(missing_ok=True)
 
 
+def _agent(actor: Any) -> str:
+    """Jobs come from the agent side, so whatever they claim, they are recorded as an agent."""
+    name = str(actor or "agent:unknown")
+    return name if name.startswith("agent:") else f"agent:{name}"
+
+
 def run_worker(service: Any, once: bool = False, log: Callable[[str], None] = print,
-               max_age: float = 3600) -> int:
+               max_age: float = 3600, insecure: bool = False) -> int:
     """Execute queued jobs until interrupted. Returns the number of jobs handled."""
-    from .service import ServiceError
+    from .service import APPROVAL_KEY_ENV, ServiceError, approval_key
+
+    if not approval_key() and not insecure:
+        raise WorkerError(f"{APPROVAL_KEY_ENV} is not set. The worker only applies approvals signed with it, "
+                          "so set it here and in the terminal you approve from (never where the agent runs).")
 
     queue = JobQueue(service.config.data_dir)
     handled = 0
@@ -110,19 +126,25 @@ def run_worker(service: Any, once: bool = False, log: Callable[[str], None] = pr
             time.sleep(POLL_SECONDS)
             continue
         running, job = claimed
-        job_id, op, actor = job["id"], job["op"], job["actor"]
+        job_id, op, actor = job.get("id", running.stem), job.get("op"), _agent(job.get("actor"))
+        kwargs = job.get("kwargs") if isinstance(job.get("kwargs"), dict) else {}
+        if op not in OPERATIONS or set(kwargs) - ALLOWED_KWARGS[op]:
+            queue.finish(running, job_id, False, error=f"rejected job: unsupported operation or arguments ({op})")
+            continue
         if time.time() - float(job.get("submitted_at", 0)) > max_age:
             queue.finish(running, job_id, False, error="job expired before a worker picked it up")
             continue
-        log(f"{time.strftime('%H:%M:%S')}  {op:<6} {job['kwargs'].get('workspace') or job['kwargs'].get('request_id')}"
+        log(f"{time.strftime('%H:%M:%S')}  {op:<6} {kwargs.get('workspace') or kwargs.get('request_id')}"
             f"  ({actor})")
         try:
             if op == "review":
-                value = service.review(actor=actor, **job["kwargs"])
+                value = service.review(actor=actor, **kwargs)
             elif op == "apply":
-                value = service.apply(job["kwargs"]["request_id"], actor)
+                value = service.apply(kwargs["request_id"], actor)
             elif op == "drift":
-                value = service.drift(job["kwargs"]["workspace"], actor)
+                value = service.drift(kwargs["workspace"], actor)
+            elif op == "submit":
+                value = service.request_apply(kwargs["request_id"], actor, kwargs.get("justification", "")).to_dict()
             else:
                 raise ServiceError(f"unknown operation {op!r}")
             queue.finish(running, job_id, True, value)

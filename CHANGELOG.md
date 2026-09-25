@@ -2,6 +2,19 @@
 
 ## 0.3.0
 
+Security review before release. Every item has a regression test.
+
+- **Signed approvals (critical).** An agent able to write `.tfminder/` could mark its own request approved and
+  apply it (reproduced). Approvals are now HMAC-signed with `TFMINDER_APPROVAL_KEY`; apply refuses unsigned
+  or edited approvals; `tfminder worker` refuses to start without the key.
+- **Plan-time code execution (critical).** `terraform plan` runs `data "external"` programs and provider
+  code, so `review_plan` itself could run an agent's command with real credentials before any approval.
+  tfminder now refuses to plan such configurations (`allow_external_programs: false`) and can restrict
+  providers (`allowed_providers`).
+- **Strict request ids (high).** Only the generated shape is accepted, closing drive-relative paths on Windows.
+- **Worker jobs (medium).** Always recorded as `agent:...`; arguments allow-listed per operation.
+- **Baselines are snapshotted** when the service starts, so an agent cannot silence findings mid-session.
+
 - **`executor: worker`.** The MCP server queues review/apply/drift jobs and `tfminder worker`, started by a
   person with their own credentials, executes them through the same Service. The agent's host process
   never runs Terraform and never holds cloud credentials. Verified live from Claude Desktop (Microsoft

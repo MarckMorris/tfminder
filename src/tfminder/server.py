@@ -60,6 +60,8 @@ def build(config: Config, service: Service | None = None) -> FastMCP:
                 return svc.review(actor=agent_actor(), **kwargs)
             if op == "apply":
                 return svc.apply(kwargs["request_id"], agent_actor())
+            if op == "submit":
+                return svc.request_apply(kwargs["request_id"], agent_actor(), kwargs["justification"]).to_dict()
             return svc.drift(kwargs["workspace"], agent_actor())
         job = queue.submit(op, kwargs, agent_actor())
         return queue.wait(job, config.worker_wait_seconds)
@@ -111,7 +113,7 @@ def build(config: Config, service: Service | None = None) -> FastMCP:
         def submit_for_approval(request_id: str, justification: str) -> dict[str, Any]:
             """Ask a human to approve a reviewed plan. Explain in the justification why the change is needed
             and address every finding. Denied plans cannot be submitted."""
-            return _call(svc.request_apply, request_id, agent_actor(), justification).to_dict()
+            return _call(lambda: execute("submit", request_id=request_id, justification=justification))
 
     if config.allows("apply"):
         @mcp.tool()

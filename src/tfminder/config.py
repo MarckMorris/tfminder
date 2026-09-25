@@ -39,6 +39,8 @@ class Policy:
     require_scope: bool = False  # the agent must declare which addresses it means to change
     deny_out_of_scope: bool = True  # touching anything outside the declared scope is denied
     verify_after_apply: bool = True  # re-plan after apply; a non-empty plan means it did not converge
+    allow_external_programs: bool = False  # data "external" / provisioners: code that runs outside review
+    allowed_providers: tuple[str, ...] = ()  # e.g. ["hashicorp/google", "hashicorp/random"]; empty = any
 
     def merged(self, raw: dict[str, Any]) -> "Policy":
         return _policy_from(raw, base=self)
@@ -110,7 +112,7 @@ def _policy_from(raw: dict[str, Any] | None, base: Policy) -> Policy:
     for key, value in raw.items():
         if key in ("block_at", "approval_at"):
             changes[key] = _severity(value, key)
-        elif key in ("protected", "deny_types"):
+        elif key in ("protected", "deny_types", "allowed_providers"):
             changes[key] = _strings(value, f"policy.{key}")
         elif key == "max_destroy":
             if value is not None and (not isinstance(value, int) or value < 0):

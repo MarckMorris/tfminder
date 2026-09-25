@@ -14,6 +14,8 @@ SHA-256 still matches the one recorded at review time.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import os
 from contextlib import contextmanager
@@ -28,11 +30,30 @@ from pyrrho.plan import Plan
 from .audit import AuditLog
 from .config import Config, Workspace
 from .engine import Decision, evaluate
+from .guard import check_providers, scan_config
 from .runner import Runner, RunnerError
 from .store import Request, Store, StoreError, now, sha256_file
 
 
 _VERDICT = {"deny": Verdict.BLOCK, "approval": Verdict.WARN, "allow": Verdict.PASS, "noop": Verdict.PASS}
+
+
+APPROVAL_KEY_ENV = "TFMINDER_APPROVAL_KEY"
+
+
+def approval_key() -> str:
+    """Secret that signs approvals. Only the human's terminal (approve, worker) should have it."""
+    return os.environ.get(APPROVAL_KEY_ENV, "")
+
+
+def _approval_payload(req: Request) -> bytes:
+    fields = [req.id, req.workspace, req.plan_sha256, req.attestation_sha256, req.approved_by,
+              req.approved_at, req.expires_at]
+    return "\n".join(fields).encode("utf-8")
+
+
+def sign_approval(req: Request, key: str) -> str:
+    return hmac.new(key.encode("utf-8"), _approval_payload(req), hashlib.sha256).hexdigest()
 
 
 def _attest_key() -> str:
@@ -50,6 +71,10 @@ class Service:
         self.runner = runner or Runner(config.binary, config.command_timeout)
         self.store = Store(config.data_dir)
         self.audit = AuditLog(config.data_dir / "audit.jsonl")
+        self._baselines: dict[str, set[str]] = {}
+        for ws in config.workspaces.values():
+            if ws.baseline and ws.baseline.exists():
+                self._baseline(ws)
         config.data_dir.mkdir(parents=True, exist_ok=True)
         gitignore = config.data_dir / ".gitignore"
         if not gitignore.exists():
@@ -74,12 +99,20 @@ class Service:
             lock.unlink(missing_ok=True)
 
     def _baseline(self, ws: Workspace) -> set[str]:
-        if not ws.baseline:
-            return set()
-        try:
-            return pyrrho_baseline.load(ws.baseline)
-        except pyrrho_baseline.BaselineError as exc:
-            raise ServiceError(str(exc)) from None
+        """Accepted findings, as loaded when this Service started.
+
+        Snapshotting matters in worker mode: the worker is started by a person, so a baseline the
+        agent edits afterwards (to silence a finding) has no effect until a person restarts it.
+        """
+        if ws.name not in self._baselines:
+            if not ws.baseline:
+                self._baselines[ws.name] = set()
+            else:
+                try:
+                    self._baselines[ws.name] = pyrrho_baseline.load(ws.baseline)
+                except pyrrho_baseline.BaselineError as exc:
+                    raise ServiceError(str(exc)) from None
+        return self._baselines[ws.name]
 
     def _verify_attestation(self, req: Request) -> None:
         """The review record must be the one written at review time, for this exact plan."""
@@ -95,6 +128,25 @@ class Service:
             ok, reason = attest.verify(doc, key=_attest_key())
             if not ok:
                 raise ServiceError(f"{req.id}: attestation signature check failed: {reason}")
+
+    def _verify_approval(self, req: Request) -> None:
+        """An approval is only trusted if it was signed with the approval key.
+
+        Without a key, approval integrity rests on the agent not being able to write .tfminder/.
+        With executor: worker the worker refuses to start without the key, so the process that
+        applies always checks.
+        """
+        key = approval_key()
+        if not key:
+            if self.config.executor == "worker":
+                raise ServiceError(f"{APPROVAL_KEY_ENV} is not set in the worker; refusing to apply")
+            return
+        if not req.approval_signature:
+            raise ServiceError(f"{req.id}: approval is not signed; approve it again from a terminal "
+                               f"that has {APPROVAL_KEY_ENV}")
+        if not hmac.compare_digest(req.approval_signature, sign_approval(req, key)):
+            raise ServiceError(f"{req.id}: approval signature does not match; the approval was forged "
+                               "or edited after it was given")
 
     def _verify_convergence(self, ws: Workspace, req: Request, actor: str) -> None:
         """Plan again after apply. Anything left to change means the apply did not converge."""
@@ -156,9 +208,24 @@ class Service:
             request_id = self.store.new_id()
             rdir = self.store.create_dir(request_id)
             planfile = self.store.planfile(request_id)
+            blocked = scan_config(ws.path, ws.policy.allow_external_programs)
+            if blocked:
+                self.audit.append("plan_refused", actor, request_id, workspace=ws.name,
+                                  reasons=[str(b) for b in blocked])
+                raise ServiceError(
+                    "refused to run terraform plan: this configuration runs code outside review\n"
+                    + "\n".join(f"  - {b}" for b in blocked)
+                    + "\nRemove it, or set allow_external_programs: true for this workspace if a human accepts it."
+                )
             try:
                 if not (ws.path / ".terraform").exists():
                     self.runner.init(ws.path)
+                bad_providers = check_providers(ws.path, ws.policy.allowed_providers)
+                if bad_providers:
+                    self.audit.append("plan_refused", actor, request_id, workspace=ws.name,
+                                      reasons=[str(b) for b in bad_providers])
+                    raise ServiceError("refused to run terraform plan: provider not allowed\n"
+                                       + "\n".join(f"  - {b}" for b in bad_providers))
                 result = self.runner.plan(ws.path, planfile, ws.var_files, destroy=destroy)
                 plan_json = self.runner.show_json(ws.path, planfile)
             except RunnerError as exc:
@@ -201,6 +268,8 @@ class Service:
             req.approved_by = "policy:auto_apply"
             req.approved_at = now().isoformat()
             req.expires_at = self.store.expiry(ws.policy.approval_ttl_minutes)
+            if approval_key():
+                req.approval_signature = sign_approval(req, approval_key())
         else:
             req.status = "pending"
         self.store.save(req)
@@ -220,8 +289,10 @@ class Service:
         req.approved_by = actor
         req.approved_at = now().isoformat()
         req.expires_at = self.store.expiry(ws.policy.approval_ttl_minutes)
+        key = approval_key()
+        req.approval_signature = sign_approval(req, key) if key else ""
         self.store.save(req)
-        self.audit.append("approved", actor, req.id, plan_sha256=req.plan_sha256, expires_at=req.expires_at)
+        self.audit.append("approved", actor, req.id, signed=bool(key), plan_sha256=req.plan_sha256, expires_at=req.expires_at)
         return req
 
     def reject(self, request_id: str, actor: str, reason: str) -> Request:
@@ -244,6 +315,7 @@ class Service:
         try:
             self.store.verify_plan(req)
             self._verify_attestation(req)
+            self._verify_approval(req)
         except (StoreError, ServiceError) as exc:
             self.audit.append("apply_refused", actor, req.id, error=str(exc))
             raise ServiceError(str(exc)) from None
