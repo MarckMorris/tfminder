@@ -36,7 +36,8 @@ def _call(fn: Any, *args: Any) -> Any:
 
 INSTRUCTIONS = """\
 tfminder supervises Terraform for you. Workflow:
-1. review_plan(workspace) runs a real plan and returns a request id, the changes, risk findings and a decision.
+1. review_plan(workspace, scope=[...]) runs a real plan and returns a request id, the changes, risk findings and a
+   decision. Declare in scope exactly the addresses you mean to change; anything else in the plan is flagged.
 2. If the decision is 'deny', do not try to work around it: change the code or explain the findings to the user.
 3. Otherwise call submit_for_approval(request_id, justification). A human approves it outside this tool.
 4. Once get_request shows status 'approved', call apply_approved(request_id) (if your tier allows it).
@@ -78,10 +79,19 @@ def build(config: Config, service: Service | None = None) -> FastMCP:
 
     if config.allows("plan"):
         @mcp.tool()
-        def review_plan(workspace: str, justification: str = "", destroy: bool = False) -> dict[str, Any]:
+        def review_plan(
+            workspace: str,
+            justification: str = "",
+            scope: list[str] | None = None,
+            destroy: bool = False,
+        ) -> dict[str, Any]:
             """Run `terraform plan` in a workspace and review it. Returns a request id, the planned changes,
-            risk findings and the policy decision (allow / approval / deny / noop). Nothing is applied."""
-            return _call(svc.review, workspace, agent_actor(), justification, destroy)
+            risk findings and the policy decision (allow / approval / deny / noop). Nothing is applied.
+
+            scope: the Terraform addresses you intend to change, as glob patterns
+            (for example ["google_compute_firewall.iap_ssh", "module.network.*"]). If the plan touches
+            anything outside it, the change is flagged (RD007) and, by default, denied. Always declare it."""
+            return _call(svc.review, workspace, agent_actor(), justification, destroy, scope)
 
         @mcp.tool()
         def submit_for_approval(request_id: str, justification: str) -> dict[str, Any]:

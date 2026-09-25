@@ -10,6 +10,8 @@ import sys
 from pathlib import Path
 from typing import Any, Sequence
 
+from pyrrho import baseline as pyrrho_baseline
+from pyrrho import sarif as pyrrho_sarif
 from pyrrho.plan import PlanFormatError
 from pyrrho.plan import load as load_plan
 
@@ -35,6 +37,9 @@ policy:
   approval_on_destroy: true
   auto_apply: false         # true: clean plans (no findings, no destroys) skip the human
   approval_ttl_minutes: 60
+  require_scope: false      # true: the agent must declare which addresses it means to change
+  deny_out_of_scope: true   # a plan that touches more than the declared scope is denied
+  verify_after_apply: true  # re-plan after apply and record whether it converged
   deny_types:
     - google_project_iam_policy
     - google_organization_iam_policy
@@ -88,7 +93,8 @@ def render(detail: dict[str, Any]) -> str:
         lines.append("")
     for f in findings:
         sev = f["severity"]
-        lines.append(_c(f"{sev.upper():<8} {f['rule_id']}  {f['title']}", SEV_COLOR.get(sev, "")))
+        tag = "  (accepted by baseline)" if f.get("suppressed") else ""
+        lines.append(_c(f"{sev.upper():<8} {f['rule_id']}  {f['title']}{tag}", SEV_COLOR.get(sev, "")))
         lines.append(f"         {f['resource']}")
         lines.append(f"         {f['detail']}")
     lines.append("")
@@ -100,6 +106,18 @@ def render(detail: dict[str, Any]) -> str:
         lines.append(f"justification: {detail['justification']}")
     if detail.get("approved_by"):
         lines.append(f"approved by {detail['approved_by']} at {detail['approved_at']} (expires {detail['expires_at']})")
+    if detail.get("scope"):
+        lines.append("scope    " + ", ".join(detail["scope"]))
+    if detail.get("suppressed"):
+        lines.append(f"baseline {len(detail['suppressed'])} finding(s) accepted by baseline")
+    if detail.get("stale_baseline"):
+        lines.append(f"baseline {len(detail['stale_baseline'])} stale entr(ies) no longer match anything; prune them")
+    if detail.get("converged") is True:
+        lines.append(_c("converged: a plan after apply shows no changes", DEC_COLOR["allow"]))
+    elif detail.get("converged") is False:
+        lines.append(_c("NOT CONVERGED: changes remain after apply", DEC_COLOR["deny"]))
+        for r in detail.get("post_apply_changes", [])[:20]:
+            lines.append(f"  - {r}")
     if detail.get("error"):
         lines.append("error:\n" + detail["error"])
     return "\n".join(lines)
@@ -156,7 +174,18 @@ def cmd_check(args: argparse.Namespace) -> int:
     except PlanFormatError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    ev = evaluate(plan, policy).to_dict()
+    suppressed: set[str] = set()
+    if args.baseline:
+        try:
+            suppressed = pyrrho_baseline.load(args.baseline)
+        except pyrrho_baseline.BaselineError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+    result = evaluate(plan, policy, scope=args.scope, baseline=suppressed)
+    ev = result.to_dict()
+    if args.sarif:
+        Path(args.sarif).write_text(pyrrho_sarif.dumps(result.report, location=args.sarif_location),
+                                    encoding="utf-8")
     if args.format == "json":
         _print(ev)
     elif args.format == "markdown":
@@ -172,7 +201,8 @@ def cmd_check(args: argparse.Namespace) -> int:
 
 def cmd_plan(args: argparse.Namespace) -> int:
     svc = Service(_config(args))
-    detail = svc.review(args.workspace, f"human:{human_identity()}", args.justification or "", args.destroy)
+    detail = svc.review(args.workspace, f"human:{human_identity()}", args.justification or "", args.destroy,
+                        args.scope)
     _print(detail) if args.json else print(render(detail))
     return 1 if detail["decision"] == "deny" else 0
 
@@ -266,6 +296,17 @@ def cmd_drift(args: argparse.Namespace) -> int:
     return 2 if (out["unmanaged"] or out["ghosts"]) and args.fail_on_drift else 0
 
 
+def cmd_baseline(args: argparse.Namespace) -> int:
+    svc = Service(_config(args))
+    doc = svc.baseline_from(args.id, args.note or "")
+    if args.output:
+        Path(args.output).write_text(doc + "\n", encoding="utf-8")
+        print(f"wrote {args.output}; point a workspace's 'baseline:' at it to accept these findings")
+    else:
+        print(doc)
+    return 0
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     from .server import serve
 
@@ -298,12 +339,17 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--workspace", help="use this workspace's policy")
     s.add_argument("--format", choices=("text", "json", "markdown"), default="text")
     s.add_argument("--strict", action="store_true", help="exit 3 when approval is required")
+    s.add_argument("--scope", action="append", help="address glob this change is meant to touch (repeatable)")
+    s.add_argument("--baseline", help="pyrrho baseline file of accepted findings")
+    s.add_argument("--sarif", help="also write SARIF 2.1.0 here (GitHub code scanning)")
+    s.add_argument("--sarif-location", help="repository path to anchor SARIF alerts to (e.g. infra/main.tf)")
     s.set_defaults(fn=cmd_check)
 
     s = sub.add_parser("plan", help="run terraform plan in a workspace and create a request")
     s.add_argument("workspace")
     s.add_argument("--justification", "-j")
     s.add_argument("--destroy", action="store_true")
+    s.add_argument("--scope", action="append", help="address glob this change is meant to touch (repeatable)")
     s.add_argument("--json", action="store_true")
     s.set_defaults(fn=cmd_plan)
 
@@ -341,6 +387,12 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--imports", help="write import {} blocks to this file")
     s.add_argument("--fail-on-drift", action="store_true")
     s.set_defaults(fn=cmd_drift)
+
+    s = sub.add_parser("baseline", help="write a pyrrho baseline accepting a request's findings")
+    s.add_argument("id")
+    s.add_argument("--output", "-o")
+    s.add_argument("--note")
+    s.set_defaults(fn=cmd_baseline)
 
     s = sub.add_parser("serve", help="run the MCP server on stdio")
     s.set_defaults(fn=cmd_serve)

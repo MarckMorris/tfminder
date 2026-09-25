@@ -48,3 +48,24 @@ jobs:
           pip install -e ".[dev]"
       - name: End to end against real Terraform
         run: pytest -v tests/test_e2e.py
+
+  action:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the action on a plan it must deny
+        id: tfminder
+        uses: ./
+        continue-on-error: true
+        with:
+          plan: examples/plans/gcp-risky.json
+          scope: "google_compute_firewall.*,google_storage_bucket_iam_member.*"
+          comment: "false"
+      - name: Assert the verdict
+        run: |
+          test "${{ steps.tfminder.outputs.decision }}" = "deny"
+          test "${{ steps.tfminder.outcome }}" = "failure"
+          test -s tfminder.sarif

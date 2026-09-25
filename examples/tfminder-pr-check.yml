@@ -10,6 +10,7 @@ permissions:
   contents: read
   id-token: write        # Workload Identity Federation to GCP
   pull-requests: write
+  security-events: write   # SARIF upload
 
 jobs:
   review:
@@ -23,26 +24,15 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_wrapper: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install tfminder
       - name: Plan
         working-directory: infra
         run: |
           terraform init -input=false
           terraform plan -input=false -out=tfplan
           terraform show -json tfplan > plan.json
-      - name: tfminder
-        id: check
-        run: |
-          set +e
-          tfminder check infra/plan.json --workspace prod --format markdown > verdict.md
-          echo "code=$?" >> "$GITHUB_OUTPUT"
-      - name: Comment
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh pr comment ${{ github.event.pull_request.number }} --body-file verdict.md --edit-last || gh pr comment ${{ github.event.pull_request.number }} --body-file verdict.md
-      - name: Enforce
-        if: steps.check.outputs.code == '1'
-        run: exit 1
+      - uses: MarckMorris/tfminder@v0
+        with:
+          plan: infra/plan.json
+          config: .tfminder.yaml
+          workspace: prod
+          sarif-location: infra/main.tf

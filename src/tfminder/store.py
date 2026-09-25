@@ -53,6 +53,11 @@ class Request:
     reject_reason: str = ""
     applied_at: str = ""
     error: str = ""
+    scope: list[str] = field(default_factory=list)
+    attestation_sha256: str = ""
+    attestation_signed: bool = False
+    converged: bool | None = None
+    post_apply_changes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -99,7 +104,9 @@ class Store:
         target = self.path(request_id) / "request.json"
         if not target.exists():
             raise StoreError(f"no such request: {request_id}")
-        return Request(**json.loads(target.read_text(encoding="utf-8")))
+        data = json.loads(target.read_text(encoding="utf-8"))
+        known = set(Request.__dataclass_fields__)
+        return Request(**{k: v for k, v in data.items() if k in known})
 
     def all(self) -> list[Request]:
         if not self.dir.exists():

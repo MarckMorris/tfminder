@@ -146,3 +146,56 @@ def test_tiers_limit_tools(repo):
         names = {t.name for t in asyncio.run(build(load(cfg_path)).list_tools())}
         assert ("apply_approved" in names) is expect_apply
         assert ("review_plan" in names) is expect_plan
+
+
+# -- v0.2 ---------------------------------------------------------------------------------------------
+
+def _approved(s, **kw):
+    d = s.review("stack", "agent:test", **kw)
+    s.request_apply(d["id"], "agent:test", "x")
+    s.approve(d["id"], "human:tester")
+    return d
+
+
+def test_apply_records_convergence(repo):
+    s = svc(repo)
+    d = _approved(s)
+    s.apply(d["id"], "agent:test")
+    req = s.get(d["id"])
+    assert req.converged is True and req.post_apply_changes == []
+    assert '"event": "converged"' in (repo / ".tfminder" / "audit.jsonl").read_text()
+
+
+def test_tampered_attestation_is_refused(repo):
+    s = svc(repo)
+    d = s.review("stack", "agent:test")
+    s.request_apply(d["id"], "agent:test", "x")
+    att = s.store.path(d["id"]) / "attestation.json"
+    att.write_text(att.read_text().replace('"verdict": "warn"', '"verdict": "pass"'))
+    with pytest.raises(ServiceError, match="attestation"):
+        s.approve(d["id"], "human:tester")
+
+
+def test_signed_attestation_needs_the_key(repo, monkeypatch):
+    monkeypatch.setenv("TFMINDER_ATTEST_KEY", "k1")
+    s = svc(repo)
+    d = _approved(s)
+    assert s.get(d["id"]).attestation_signed
+    monkeypatch.setenv("TFMINDER_ATTEST_KEY", "another-key")
+    with pytest.raises(ServiceError, match="signature"):
+        s.apply(d["id"], "agent:test")
+
+
+def test_scope_through_the_service(repo):
+    s = svc(repo)
+    ok = s.review("stack", "agent:test", scope=["terraform_data.item*"])
+    assert ok["decision"] == "approval" and ok["scope"] == ["terraform_data.item*"]
+    bad = s.review("stack", "agent:test", scope=['terraform_data.item["a"]'])
+    assert bad["decision"] == "deny" and bad["status"] == "denied"
+
+
+def test_baseline_roundtrip(repo):
+    s = svc(repo)
+    d = s.review("stack", "agent:test")
+    doc = json.loads(s.baseline_from(d["id"]))
+    assert doc["format"] == "pyrrho-baseline/v1"

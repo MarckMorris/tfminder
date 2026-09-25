@@ -1,0 +1,136 @@
+name: "tfminder"
+description: >-
+  Review a Terraform plan against policy before it is applied: GCP and AWS risk rules, declared scope,
+  destroy limits, baselines. Posts the verdict and uploads SARIF to code scanning.
+author: "Marck Morris"
+
+branding:
+  icon: "shield"
+  color: "green"
+
+inputs:
+  plan:
+    description: "Path to the plan JSON (`terraform show -json tfplan > plan.json`)."
+    required: true
+  config:
+    description: "Path to .tfminder.yaml. Empty: tfminder's default policy."
+    required: false
+    default: ""
+  workspace:
+    description: "Workspace in .tfminder.yaml whose policy applies. Empty: the first one."
+    required: false
+    default: ""
+  scope:
+    description: "Comma-separated address globs this change is meant to touch. Anything else is flagged (RD007)."
+    required: false
+    default: ""
+  baseline:
+    description: "pyrrho baseline file of accepted findings."
+    required: false
+    default: ""
+  strict:
+    description: "Fail the step when a human approval would be required, not only on deny."
+    required: false
+    default: "false"
+  sarif:
+    description: "Where to write SARIF. Empty to skip."
+    required: false
+    default: "tfminder.sarif"
+  sarif-location:
+    description: "Repository path to anchor SARIF alerts to, for example infra/main.tf."
+    required: false
+    default: ""
+  comment:
+    description: "Post the verdict as a pull request comment (needs pull-requests: write)."
+    required: false
+    default: "true"
+  version:
+    description: "tfminder version to install from PyPI. Empty: latest."
+    required: false
+    default: ""
+
+outputs:
+  decision:
+    description: "allow, approval, deny or noop."
+    value: ${{ steps.check.outputs.decision }}
+  sarif:
+    description: "Path of the SARIF file, when written."
+    value: ${{ inputs.sarif }}
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install tfminder
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.version }}" ]; then pip install "tfminder==${{ inputs.version }}"; else pip install tfminder; fi
+
+    - name: Review plan
+      id: check
+      shell: bash
+      env:
+        IN_PLAN: ${{ inputs.plan }}
+        IN_CONFIG: ${{ inputs.config }}
+        IN_WORKSPACE: ${{ inputs.workspace }}
+        IN_SCOPE: ${{ inputs.scope }}
+        IN_BASELINE: ${{ inputs.baseline }}
+        IN_SARIF: ${{ inputs.sarif }}
+        IN_SARIF_LOCATION: ${{ inputs.sarif-location }}
+        IN_STRICT: ${{ inputs.strict }}
+      run: |
+        common=()
+        [ -n "$IN_CONFIG" ] && common+=(--config "$IN_CONFIG")
+        common+=(check "$IN_PLAN")
+        [ -n "$IN_WORKSPACE" ] && common+=(--workspace "$IN_WORKSPACE")
+        [ -n "$IN_BASELINE" ] && common+=(--baseline "$IN_BASELINE")
+        [ "$IN_STRICT" = "true" ] && common+=(--strict)
+        if [ -n "$IN_SCOPE" ]; then
+          IFS=',' read -ra patterns <<< "$IN_SCOPE"
+          for p in "${patterns[@]}"; do common+=(--scope "$(echo "$p" | xargs)"); done
+        fi
+        sarif=()
+        [ -n "$IN_SARIF" ] && sarif+=(--sarif "$IN_SARIF")
+        [ -n "$IN_SARIF_LOCATION" ] && sarif+=(--sarif-location "$IN_SARIF_LOCATION")
+
+        set +e
+        tfminder "${common[@]}" "${sarif[@]}" --format json > tfminder-result.json
+        code=$?
+        tfminder "${common[@]}" --format markdown > tfminder-verdict.md
+        set -e
+        if [ "$code" = "2" ]; then cat tfminder-result.json; echo "::error::tfminder could not read the plan"; fi
+        decision=$(python -c "import json;print(json.load(open('tfminder-result.json'))['decision'])" 2>/dev/null || echo error)
+        echo "decision=$decision" >> "$GITHUB_OUTPUT"
+        echo "code=$code" >> "$GITHUB_OUTPUT"
+        cat tfminder-verdict.md >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Upload SARIF
+      if: inputs.sarif != '' && always()
+      uses: github/codeql-action/upload-sarif@v3
+      continue-on-error: true
+      with:
+        sarif_file: ${{ inputs.sarif }}
+        category: tfminder
+
+    - name: Comment on pull request
+      if: inputs.comment == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh pr comment "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}" \
+          --body-file tfminder-verdict.md --edit-last 2>/dev/null \
+        || gh pr comment "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}" \
+          --body-file tfminder-verdict.md
+
+    - name: Enforce
+      shell: bash
+      run: |
+        code="${{ steps.check.outputs.code }}"
+        if [ "$code" != "0" ]; then
+          echo "::error::tfminder decision: ${{ steps.check.outputs.decision }}"
+          exit "$code"
+        fi

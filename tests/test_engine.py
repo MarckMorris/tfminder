@@ -43,3 +43,44 @@ def test_max_destroy_and_protected():
 def test_deny_types():
     plan = make_plan(change("google_pubsub_topic.t", ["create"], None, LABEL))
     assert evaluate(plan, Policy(deny_types=("google_pubsub_*",))).decision == Decision.DENY
+
+
+# -- v0.2: declared scope, baselines ----------------------------------------------------------------
+
+TOPIC = change("google_pubsub_topic.t", ["create"], None, LABEL)
+SUB = change("google_pubsub_subscription.s", ["create"], None, {"name": "s", "topic": "t"})
+
+
+def test_scope_matching_everything_is_fine():
+    ev = evaluate(make_plan(TOPIC, SUB), Policy(), scope=["google_pubsub_*"])
+    assert ev.decision == Decision.APPROVAL
+    assert not [f for f in ev.report.findings if f.rule_id == "RD007"]
+
+
+def test_out_of_scope_is_denied_by_default():
+    ev = evaluate(make_plan(TOPIC, SUB), Policy(), scope=["google_pubsub_topic.t"])
+    assert ev.decision == Decision.DENY
+    assert any(r.startswith("RD007") for r in ev.reasons)
+
+
+def test_out_of_scope_can_be_downgraded_to_approval():
+    ev = evaluate(make_plan(TOPIC, SUB), Policy(deny_out_of_scope=False), scope=["google_pubsub_topic.t"])
+    assert ev.decision == Decision.APPROVAL
+
+
+def test_require_scope():
+    assert evaluate(make_plan(TOPIC), Policy(require_scope=True)).decision == Decision.DENY
+    assert evaluate(make_plan(TOPIC), Policy(require_scope=True), scope=["*"]).decision == Decision.APPROVAL
+
+
+def test_baseline_suppresses_and_reports_stale():
+    public = change("google_storage_bucket_iam_member.p", ["create"], None,
+                    {"role": "roles/storage.objectViewer", "member": "allUsers"})
+    first = evaluate(make_plan(public), Policy())
+    assert first.decision == Decision.DENY
+    accepted = {f.fingerprint for f in first.report.findings}
+
+    again = evaluate(make_plan(public), Policy(), baseline=accepted | {"deadbeefdeadbeef"})
+    assert again.decision == Decision.APPROVAL
+    assert all(f.suppressed for f in again.report.findings)
+    assert again.stale_baseline == ["deadbeefdeadbeef"]

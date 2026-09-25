@@ -66,3 +66,28 @@ workspaces:
 def test_config_errors(tmp_path, body, msg):
     with pytest.raises(ConfigError, match=msg):
         load(write_cfg(tmp_path, body))
+
+
+def test_windows_env_is_restored(monkeypatch):
+    from tfminder import runner
+
+    env = {"PATH": "x", "SystemRoot": "D:\\Win"}
+    runner._fill_windows_env(env)
+    assert env["SystemRoot"] == "D:\\Win" and "SYSTEMROOT" not in env  # existing value kept, any case
+    for key in ("WINDIR", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "TEMP", "TMP"):
+        assert env[key]
+
+
+def test_check_writes_sarif(tmp_path):
+    from pathlib import Path
+
+    from tfminder.cli import main
+
+    plan = Path(__file__).parent.parent / "examples" / "plans" / "gcp-risky.json"
+    out = tmp_path / "r.sarif"
+    code = main(["check", str(plan), "--sarif", str(out), "--format", "json"])
+    doc = json.loads(out.read_text())
+    assert code == 1  # denied
+    assert doc["version"] == "2.1.0"
+    rules = {r["ruleId"] for r in doc["runs"][0]["results"]}
+    assert {"GC001", "GC006"} <= rules

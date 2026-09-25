@@ -12,13 +12,19 @@ tfminder sits between an agent (Claude, Cursor, Copilot, anything that speaks
 plan. It can ask. It cannot approve itself, cannot apply a plan nobody
 reviewed, and cannot quietly apply something different from what was reviewed.
 
+![tfminder reviewing real terraform plans against Google Cloud](docs/demo.gif)
+
+<sub>Real output: `terraform plan` of [`examples/gcp-lab`](examples/gcp-lab) with Terraform 1.14 and the google
+provider 6.50, reviewed by tfminder. Replayed by [`scripts/make_demo_gif.py`](scripts/make_demo_gif.py).</sub>
+
 ```
-agent ──MCP──> review_plan ──> risk review + policy ──> allow / needs approval / deny
+agent ──MCP──> review_plan(scope) ──> risk review + policy ──> allow / needs approval / deny
+                                      (signed attestation)        │
                                                               │
 human ── tfminder approve <id> (terminal, typed confirmation) ┘
                                                               │
 agent ──MCP──> apply_approved ──> applies the exact reviewed plan file (sha256-pinned)
-                                                              │
+                                  └─> re-plans: did it converge? ─┤
 everything ──> hash-chained audit log  ◄──────────────────────┘
 ```
 
@@ -107,8 +113,24 @@ ok: 5 entries, chain intact, head a735bd68fe4c...
 | `auto_apply` | Clean plans skip the human (off by default) |
 | `approval_ttl_minutes` | Approvals expire |
 
-4. **Apply** only if: a human approved it, the approval has not expired, the plan file's SHA-256 matches
-   the one reviewed, and Terraform itself accepts the saved plan (it rejects stale plans if state moved).
+| `require_scope` | The agent must declare which addresses it means to change |
+| `deny_out_of_scope` | A plan touching anything outside the declared scope is denied (default on) |
+| `verify_after_apply` | Re-plan after apply and record whether it converged (default on) |
+
+Per workspace, `baseline:` points at a pyrrho baseline of accepted findings (`tfminder baseline <id> -o file`
+writes one). Accepted findings stay visible; stale entries are reported so the file does not rot.
+
+4. **Declared scope.** The agent says what it is changing (`scope=["google_compute_firewall.iap_ssh"]`).
+   If the plan also touches anything else, pyrrho's RD007 flags it and tfminder denies it. A plan that does
+   more than the agent said is exactly the failure mode to catch.
+5. **Attested.** Every review writes a pyrrho attestation: plan SHA-256, analyzers, verdict, finding
+   fingerprints. With `TFMINDER_ATTEST_KEY` set it is HMAC-signed. Approve and apply refuse if it changed.
+6. **Apply** only if: a human approved it, the approval has not expired, the plan file's SHA-256 matches
+   the one reviewed, the attestation checks out, and Terraform itself accepts the saved plan (it rejects
+   stale plans if state moved).
+7. **Verify.** After apply tfminder plans again. If anything is still left to change, the request is marked
+   *not converged* and the audit log says so: a provider bug, a default the code does not pin, or someone
+   changing things while the apply ran.
 
 ## Google Cloud rules (`gcp-guard`)
 
@@ -137,7 +159,7 @@ Cloud SQL and bucket destruction and Cloud SQL deletion protection come from pyr
 | Tier | Tools |
 |---|---|
 | `read` | `list_workspaces`, `list_requests`, `get_request`, `drift_scan` |
-| `plan` | + `review_plan`, `submit_for_approval` |
+| `plan` | + `review_plan` (with declared `scope`), `submit_for_approval` |
 | `apply` | + `apply_approved` |
 
 There is no approve or reject tool at any tier.
@@ -179,12 +201,24 @@ tfminder show <id>           # changes, findings, the agent's justification
 tfminder approve <id>        # or: tfminder reject <id> -r "reason"
 ```
 
-### In CI, without an agent
+### In CI, without an agent: GitHub Action
 
-`tfminder check plan.json --workspace prod --format markdown` evaluates a plan JSON and exits `1` on deny
-(`--strict` also exits `3` when approval is needed). See
-[`examples/tfminder-pr-check.yml`](examples/tfminder-pr-check.yml) for a pull request check that
-comments the verdict.
+```yaml
+- run: terraform plan -out=tfplan && terraform show -json tfplan > plan.json
+  working-directory: infra
+- uses: MarckMorris/tfminder@v0
+  with:
+    plan: infra/plan.json
+    config: .tfminder.yaml
+    workspace: prod
+    scope: "module.network.*"          # optional: what this PR claims to change
+    sarif-location: infra/main.tf      # alerts land on the code in the Security tab
+```
+
+It comments the verdict on the pull request, writes it to the job summary, uploads SARIF to code scanning
+and fails the check on deny (`strict: true` also fails when approval would be needed). The same thing from a
+shell: `tfminder check plan.json --workspace prod --sarif out.sarif --format markdown`. A full workflow with
+Workload Identity Federation is in [`examples/tfminder-pr-check.yml`](examples/tfminder-pr-check.yml).
 
 ### Try it
 

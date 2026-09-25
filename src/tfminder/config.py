@@ -36,6 +36,9 @@ class Policy:
     deny_types: tuple[str, ...] = ()  # resource types an agent may never touch
     auto_apply: bool = False  # clean plans (no findings, no destroys) skip the human
     approval_ttl_minutes: int = 60
+    require_scope: bool = False  # the agent must declare which addresses it means to change
+    deny_out_of_scope: bool = True  # touching anything outside the declared scope is denied
+    verify_after_apply: bool = True  # re-plan after apply; a non-empty plan means it did not converge
 
     def merged(self, raw: dict[str, Any]) -> "Policy":
         return _policy_from(raw, base=self)
@@ -50,6 +53,7 @@ class Workspace:
     state: tuple[str, ...] = ()  # strayform sources: files, dirs or gs:// URIs
     scope: tuple[str, ...] = ()  # strayform scopes: project IDs, folders/N, organizations/N
     var_files: tuple[str, ...] = ()
+    baseline: Path | None = None  # pyrrho baseline of accepted findings
 
 
 @dataclass(frozen=True)
@@ -200,6 +204,7 @@ def load(path: Path | None = None) -> Config:
             state=state,
             scope=_strings(item.get("scope"), f"workspaces[{name}].scope"),
             var_files=_strings(item.get("var_files"), f"workspaces[{name}].var_files"),
+            baseline=(root / str(item["baseline"])).resolve() if item.get("baseline") else None,
         )
 
     timeout = data.get("command_timeout", 1800)
