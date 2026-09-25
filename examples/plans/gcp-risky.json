@@ -1,0 +1,128 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.8",
+  "resource_changes": [
+    {
+      "address": "google_compute_firewall.allow_ssh",
+      "mode": "managed",
+      "type": "google_compute_firewall",
+      "name": "allow_ssh",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "name": "allow-ssh",
+          "network": "prod-vpc",
+          "direction": "INGRESS",
+          "disabled": false,
+          "source_ranges": [
+            "35.235.240.0/20"
+          ],
+          "allow": [
+            {
+              "protocol": "tcp",
+              "ports": [
+                "22"
+              ]
+            }
+          ],
+          "deny": [],
+          "priority": 1000
+        },
+        "after": {
+          "name": "allow-ssh",
+          "network": "prod-vpc",
+          "direction": "INGRESS",
+          "disabled": false,
+          "source_ranges": [
+            "0.0.0.0/0"
+          ],
+          "allow": [
+            {
+              "protocol": "tcp",
+              "ports": [
+                "22"
+              ]
+            }
+          ],
+          "deny": [],
+          "priority": 1000
+        },
+        "after_unknown": {},
+        "before_sensitive": {},
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "google_storage_bucket_iam_member.reports_public",
+      "mode": "managed",
+      "type": "google_storage_bucket_iam_member",
+      "name": "reports_public",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "bucket": "acme-reports",
+          "role": "roles/storage.objectViewer",
+          "member": "allUsers",
+          "condition": []
+        },
+        "after_unknown": {},
+        "before_sensitive": {},
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "google_sql_database_instance.orders",
+      "mode": "managed",
+      "type": "google_sql_database_instance",
+      "name": "orders",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "name": "orders",
+          "database_version": "POSTGRES_16",
+          "deletion_protection": true
+        },
+        "after": {
+          "name": "orders",
+          "database_version": "POSTGRES_16",
+          "deletion_protection": false
+        },
+        "after_unknown": {},
+        "before_sensitive": {},
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "google_pubsub_topic.events",
+      "mode": "managed",
+      "type": "google_pubsub_topic",
+      "name": "events",
+      "provider_name": "registry.terraform.io/hashicorp/google",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "events",
+          "labels": {
+            "team": "payments"
+          }
+        },
+        "after_unknown": {},
+        "before_sensitive": {},
+        "after_sensitive": {}
+      }
+    }
+  ]
+}

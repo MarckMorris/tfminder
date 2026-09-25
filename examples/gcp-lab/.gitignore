@@ -1,0 +1,4 @@
+.tfminder/
+infra/.terraform/
+infra/*.tfstate*
+infra/lab.tfvars

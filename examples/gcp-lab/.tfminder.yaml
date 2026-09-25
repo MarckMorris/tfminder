@@ -1,0 +1,19 @@
+version: 1
+tier: apply            # the agent may apply, but only plans a human approved
+
+policy:
+  block_at: critical
+  approval_at: low
+  approval_on_destroy: true
+  approval_ttl_minutes: 30
+  deny_types:
+    - google_project_iam_policy
+    - google_organization_iam_policy
+
+workspaces:
+  - name: lab
+    path: infra
+    environment: lab
+    var_files: [lab.tfvars]          # contains: project_id = "your-project"
+    state: [infra/terraform.tfstate] # for drift scans (or gs://bucket/prefix)
+    scope: [your-project]            # project ID(s) to compare against

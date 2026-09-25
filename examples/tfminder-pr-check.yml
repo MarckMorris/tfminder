@@ -1,0 +1,48 @@
+# Copy to .github/workflows/ in your infrastructure repo.
+# Posts tfminder's verdict on every pull request and fails the check when policy denies the plan.
+name: tfminder
+
+on:
+  pull_request:
+    paths: ["infra/**", ".tfminder.yaml"]
+
+permissions:
+  contents: read
+  id-token: write        # Workload Identity Federation to GCP
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.PLAN_SA }}        # read-only: roles/viewer + state bucket reader
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "git+https://github.com/MarckMorris/pyrrho@v0.2.1" "git+https://github.com/MarckMorris/tfminder"
+      - name: Plan
+        working-directory: infra
+        run: |
+          terraform init -input=false
+          terraform plan -input=false -out=tfplan
+          terraform show -json tfplan > plan.json
+      - name: tfminder
+        id: check
+        run: |
+          set +e
+          tfminder check infra/plan.json --workspace prod --format markdown > verdict.md
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+      - name: Comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment ${{ github.event.pull_request.number }} --body-file verdict.md --edit-last || gh pr comment ${{ github.event.pull_request.number }} --body-file verdict.md
+      - name: Enforce
+        if: steps.check.outputs.code == '1'
+        run: exit 1

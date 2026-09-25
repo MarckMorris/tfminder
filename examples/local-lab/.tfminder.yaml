@@ -1,0 +1,9 @@
+version: 1
+tier: apply
+policy:
+  approval_at: low
+  max_destroy: 1
+workspaces:
+  - name: stack
+    path: stack
+    environment: dev

@@ -1,0 +1,52 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tfminder"
+version = "0.1.0"
+description = "Let AI agents plan and apply Terraform safely: risk review, policy gates, human approval and a tamper-evident audit log, exposed as an MCP server."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+authors = [{ name = "Marck Morris" }]
+keywords = ["terraform", "opentofu", "mcp", "ai-agents", "gcp", "guardrails", "policy", "sre", "platform-engineering"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Environment :: Console",
+  "Intended Audience :: System Administrators",
+  "Topic :: System :: Systems Administration",
+  "Topic :: Security",
+]
+dependencies = [
+  "pyrrho>=0.2.1",
+  "pyyaml>=6.0",
+  "mcp>=1.2,<3",
+]
+
+[project.optional-dependencies]
+drift = ["strayform>=0.1.0"]
+dev = ["pytest>=8", "ruff>=0.5"]
+
+[project.scripts]
+tfminder = "tfminder.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/MarckMorris/tfminder"
+Issues = "https://github.com/MarckMorris/tfminder/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tfminder"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
