@@ -5,10 +5,41 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 MAX_OUTPUT = 20_000
+
+
+def _fill_windows_env(env: dict[str, str]) -> None:
+    """Restore the variables Windows programs need when a parent stripped them.
+
+    MCP clients often start servers with a minimal environment. Terraform and its
+    providers are Go binaries, and Go cannot open sockets on Windows without
+    SYSTEMROOT, so the provider dies with "Plugin did not respond". Values that are
+    already set are left alone.
+    """
+    home = os.path.expanduser("~")
+    upper = {k.upper(): k for k in env}
+
+    def default(name: str, value: str) -> None:
+        if name.upper() not in upper and value:
+            env[name] = value
+
+    windir = os.environ.get("SystemRoot") or os.environ.get("WINDIR") or r"C:\Windows"
+    default("SYSTEMROOT", windir)
+    default("WINDIR", windir)
+    default("USERPROFILE", home)
+    default("HOMEDRIVE", os.path.splitdrive(home)[0])
+    default("HOMEPATH", os.path.splitdrive(home)[1])
+    default("APPDATA", os.path.join(home, "AppData", "Roaming"))
+    default("LOCALAPPDATA", os.path.join(home, "AppData", "Local"))
+    tmp = tempfile.gettempdir()
+    default("TEMP", tmp)
+    default("TMP", tmp)
+    default("PROGRAMDATA", r"C:\ProgramData")
+    default("COMSPEC", os.path.join(windir, "System32", "cmd.exe"))
 
 
 class RunnerError(RuntimeError):
@@ -34,6 +65,8 @@ class Runner:
 
     def _env(self) -> dict[str, str]:
         env = dict(os.environ)
+        if os.name == "nt":
+            _fill_windows_env(env)
         env["TF_IN_AUTOMATION"] = "1"
         env["TF_INPUT"] = "0"
         env.setdefault("CHECKPOINT_DISABLE", "1")
