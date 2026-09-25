@@ -105,6 +105,21 @@ def _iam_pairs(rc_state: dict[str, Any], rc_type: str) -> set[tuple[str, str]]:
     return set()
 
 
+def _unknown(marker: Any) -> bool:
+    """True when an after_unknown marker has any unknown leaf.
+
+    Terraform writes known list elements as ``false`` (``"source_ranges": [false]``),
+    so a non-empty list or map is not by itself unknown.
+    """
+    if marker is True:
+        return True
+    if isinstance(marker, list):
+        return any(_unknown(m) for m in marker)
+    if isinstance(marker, dict):
+        return any(_unknown(m) for m in marker.values())
+    return False
+
+
 def _is_iam(rc: ResourceChange) -> bool:
     return rc.type.startswith("google_") and rc.type.endswith(("_iam_member", "_iam_binding", "_iam_policy"))
 
@@ -234,11 +249,11 @@ class GcpGuard(Analyzer):
     def _firewall(self, rc: ResourceChange) -> list[Finding]:
         if rc.is_delete:
             return []
-        if rc.is_unknown("source_ranges") or rc.is_unknown("allow"):
+        if _unknown(rc.after_unknown.get("source_ranges")) or _unknown(rc.after_unknown.get("allow")):
             return [self.finding(
                 "GC005", "Firewall exposure cannot be verified before apply", Severity.MEDIUM, rc.address,
                 "source_ranges or allow is only known after apply, so nobody can review what it opens.",
-                {"unknown": rc.unknown_keys()},
+                {"unknown": [k for k in ("source_ranges", "allow") if _unknown(rc.after_unknown.get(k))]},
                 "Make the ranges static or reviewable (variables resolved at plan time).",
             )]
         before_ports, before_all = _world_exposure(rc.before) if not rc.is_create else (set(), False)

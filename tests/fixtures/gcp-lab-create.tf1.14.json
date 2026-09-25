@@ -1,0 +1,591 @@
+{
+ "format_version": "1.2",
+ "terraform_version": "1.14.4",
+ "variables": {
+  "project_id": {
+   "value": "example-project"
+  },
+  "region": {
+   "value": "us-central1"
+  }
+ },
+ "planned_values": {
+  "root_module": {
+   "resources": [
+    {
+     "address": "google_compute_firewall.iap_ssh",
+     "mode": "managed",
+     "type": "google_compute_firewall",
+     "name": "iap_ssh",
+     "provider_name": "registry.terraform.io/hashicorp/google",
+     "schema_version": 1,
+     "values": {
+      "allow": [
+       {
+        "ports": [
+         "22"
+        ],
+        "protocol": "tcp"
+       }
+      ],
+      "deny": [],
+      "description": null,
+      "direction": "INGRESS",
+      "disabled": null,
+      "log_config": [],
+      "name": "tfminder-lab-iap-ssh",
+      "params": [],
+      "priority": 1000,
+      "project": "example-project",
+      "source_ranges": [
+       "35.235.240.0/20"
+      ],
+      "source_service_accounts": null,
+      "source_tags": null,
+      "target_service_accounts": null,
+      "target_tags": null,
+      "timeouts": null
+     },
+     "sensitive_values": {
+      "allow": [
+       {
+        "ports": [
+         false
+        ]
+       }
+      ],
+      "deny": [],
+      "destination_ranges": [],
+      "log_config": [],
+      "params": [],
+      "source_ranges": [
+       false
+      ]
+     }
+    },
+    {
+     "address": "google_compute_network.lab",
+     "mode": "managed",
+     "type": "google_compute_network",
+     "name": "lab",
+     "provider_name": "registry.terraform.io/hashicorp/google",
+     "schema_version": 0,
+     "values": {
+      "auto_create_subnetworks": false,
+      "delete_default_routes_on_create": false,
+      "description": null,
+      "enable_ula_internal_ipv6": null,
+      "name": "tfminder-lab",
+      "network_firewall_policy_enforcement_order": "AFTER_CLASSIC_FIREWALL",
+      "network_profile": null,
+      "params": [],
+      "project": "example-project",
+      "timeouts": null
+     },
+     "sensitive_values": {
+      "params": []
+     }
+    },
+    {
+     "address": "google_pubsub_topic.events",
+     "mode": "managed",
+     "type": "google_pubsub_topic",
+     "name": "events",
+     "provider_name": "registry.terraform.io/hashicorp/google",
+     "schema_version": 0,
+     "values": {
+      "effective_labels": {
+       "goog-terraform-provisioned": "true"
+      },
+      "ingestion_data_source_settings": [],
+      "kms_key_name": null,
+      "labels": null,
+      "message_retention_duration": null,
+      "message_transforms": [],
+      "name": "tfminder-lab-events",
+      "project": "example-project",
+      "schema_settings": [],
+      "terraform_labels": {
+       "goog-terraform-provisioned": "true"
+      },
+      "timeouts": null
+     },
+     "sensitive_values": {
+      "effective_labels": {},
+      "ingestion_data_source_settings": [],
+      "message_storage_policy": [],
+      "message_transforms": [],
+      "schema_settings": [],
+      "terraform_labels": {}
+     }
+    },
+    {
+     "address": "google_storage_bucket.artifacts",
+     "mode": "managed",
+     "type": "google_storage_bucket",
+     "name": "artifacts",
+     "provider_name": "registry.terraform.io/hashicorp/google",
+     "schema_version": 3,
+     "values": {
+      "autoclass": [],
+      "cors": [],
+      "custom_placement_config": [],
+      "default_event_based_hold": null,
+      "effective_labels": {
+       "goog-terraform-provisioned": "true"
+      },
+      "enable_object_retention": null,
+      "encryption": [],
+      "force_destroy": false,
+      "hierarchical_namespace": [],
+      "ip_filter": [],
+      "labels": null,
+      "lifecycle_rule": [],
+      "location": "US",
+      "logging": [],
+      "name": "example-project-tfminder-lab",
+      "public_access_prevention": "enforced",
+      "requester_pays": null,
+      "retention_policy": [],
+      "storage_class": "STANDARD",
+      "terraform_labels": {
+       "goog-terraform-provisioned": "true"
+      },
+      "timeouts": null,
+      "uniform_bucket_level_access": true,
+      "versioning": [
+       {
+        "enabled": true
+       }
+      ]
+     },
+     "sensitive_values": {
+      "autoclass": [],
+      "cors": [],
+      "custom_placement_config": [],
+      "effective_labels": {},
+      "encryption": [],
+      "hierarchical_namespace": [],
+      "ip_filter": [],
+      "lifecycle_rule": [],
+      "logging": [],
+      "retention_policy": [],
+      "soft_delete_policy": [],
+      "terraform_labels": {},
+      "versioning": [
+       {}
+      ],
+      "website": []
+     }
+    }
+   ]
+  }
+ },
+ "resource_changes": [
+  {
+   "address": "google_compute_firewall.iap_ssh",
+   "mode": "managed",
+   "type": "google_compute_firewall",
+   "name": "iap_ssh",
+   "provider_name": "registry.terraform.io/hashicorp/google",
+   "change": {
+    "actions": [
+     "create"
+    ],
+    "before": null,
+    "after": {
+     "allow": [
+      {
+       "ports": [
+        "22"
+       ],
+       "protocol": "tcp"
+      }
+     ],
+     "deny": [],
+     "description": null,
+     "direction": "INGRESS",
+     "disabled": null,
+     "log_config": [],
+     "name": "tfminder-lab-iap-ssh",
+     "params": [],
+     "priority": 1000,
+     "project": "example-project",
+     "source_ranges": [
+      "35.235.240.0/20"
+     ],
+     "source_service_accounts": null,
+     "source_tags": null,
+     "target_service_accounts": null,
+     "target_tags": null,
+     "timeouts": null
+    },
+    "after_unknown": {
+     "allow": [
+      {
+       "ports": [
+        false
+       ]
+      }
+     ],
+     "creation_timestamp": true,
+     "deny": [],
+     "destination_ranges": true,
+     "enable_logging": true,
+     "id": true,
+     "log_config": [],
+     "network": true,
+     "params": [],
+     "self_link": true,
+     "source_ranges": [
+      false
+     ]
+    },
+    "before_sensitive": false,
+    "after_sensitive": {
+     "allow": [
+      {
+       "ports": [
+        false
+       ]
+      }
+     ],
+     "deny": [],
+     "destination_ranges": [],
+     "log_config": [],
+     "params": [],
+     "source_ranges": [
+      false
+     ]
+    }
+   }
+  },
+  {
+   "address": "google_compute_network.lab",
+   "mode": "managed",
+   "type": "google_compute_network",
+   "name": "lab",
+   "provider_name": "registry.terraform.io/hashicorp/google",
+   "change": {
+    "actions": [
+     "create"
+    ],
+    "before": null,
+    "after": {
+     "auto_create_subnetworks": false,
+     "delete_default_routes_on_create": false,
+     "description": null,
+     "enable_ula_internal_ipv6": null,
+     "name": "tfminder-lab",
+     "network_firewall_policy_enforcement_order": "AFTER_CLASSIC_FIREWALL",
+     "network_profile": null,
+     "params": [],
+     "project": "example-project",
+     "timeouts": null
+    },
+    "after_unknown": {
+     "bgp_always_compare_med": true,
+     "bgp_best_path_selection_mode": true,
+     "bgp_inter_region_cost": true,
+     "gateway_ipv4": true,
+     "id": true,
+     "internal_ipv6_range": true,
+     "mtu": true,
+     "network_id": true,
+     "numeric_id": true,
+     "params": [],
+     "routing_mode": true,
+     "self_link": true
+    },
+    "before_sensitive": false,
+    "after_sensitive": {
+     "params": []
+    }
+   }
+  },
+  {
+   "address": "google_pubsub_topic.events",
+   "mode": "managed",
+   "type": "google_pubsub_topic",
+   "name": "events",
+   "provider_name": "registry.terraform.io/hashicorp/google",
+   "change": {
+    "actions": [
+     "create"
+    ],
+    "before": null,
+    "after": {
+     "effective_labels": {
+      "goog-terraform-provisioned": "true"
+     },
+     "ingestion_data_source_settings": [],
+     "kms_key_name": null,
+     "labels": null,
+     "message_retention_duration": null,
+     "message_transforms": [],
+     "name": "tfminder-lab-events",
+     "project": "example-project",
+     "schema_settings": [],
+     "terraform_labels": {
+      "goog-terraform-provisioned": "true"
+     },
+     "timeouts": null
+    },
+    "after_unknown": {
+     "effective_labels": {},
+     "id": true,
+     "ingestion_data_source_settings": [],
+     "message_storage_policy": true,
+     "message_transforms": [],
+     "schema_settings": [],
+     "terraform_labels": {}
+    },
+    "before_sensitive": false,
+    "after_sensitive": {
+     "effective_labels": {},
+     "ingestion_data_source_settings": [],
+     "message_storage_policy": [],
+     "message_transforms": [],
+     "schema_settings": [],
+     "terraform_labels": {}
+    }
+   }
+  },
+  {
+   "address": "google_storage_bucket.artifacts",
+   "mode": "managed",
+   "type": "google_storage_bucket",
+   "name": "artifacts",
+   "provider_name": "registry.terraform.io/hashicorp/google",
+   "change": {
+    "actions": [
+     "create"
+    ],
+    "before": null,
+    "after": {
+     "autoclass": [],
+     "cors": [],
+     "custom_placement_config": [],
+     "default_event_based_hold": null,
+     "effective_labels": {
+      "goog-terraform-provisioned": "true"
+     },
+     "enable_object_retention": null,
+     "encryption": [],
+     "force_destroy": false,
+     "hierarchical_namespace": [],
+     "ip_filter": [],
+     "labels": null,
+     "lifecycle_rule": [],
+     "location": "US",
+     "logging": [],
+     "name": "example-project-tfminder-lab",
+     "public_access_prevention": "enforced",
+     "requester_pays": null,
+     "retention_policy": [],
+     "storage_class": "STANDARD",
+     "terraform_labels": {
+      "goog-terraform-provisioned": "true"
+     },
+     "timeouts": null,
+     "uniform_bucket_level_access": true,
+     "versioning": [
+      {
+       "enabled": true
+      }
+     ]
+    },
+    "after_unknown": {
+     "autoclass": [],
+     "cors": [],
+     "custom_placement_config": [],
+     "effective_labels": {},
+     "encryption": [],
+     "hierarchical_namespace": [],
+     "id": true,
+     "ip_filter": [],
+     "lifecycle_rule": [],
+     "logging": [],
+     "project": true,
+     "project_number": true,
+     "retention_policy": [],
+     "rpo": true,
+     "self_link": true,
+     "soft_delete_policy": true,
+     "terraform_labels": {},
+     "time_created": true,
+     "updated": true,
+     "url": true,
+     "versioning": [
+      {}
+     ],
+     "website": true
+    },
+    "before_sensitive": false,
+    "after_sensitive": {
+     "autoclass": [],
+     "cors": [],
+     "custom_placement_config": [],
+     "effective_labels": {},
+     "encryption": [],
+     "hierarchical_namespace": [],
+     "ip_filter": [],
+     "lifecycle_rule": [],
+     "logging": [],
+     "retention_policy": [],
+     "soft_delete_policy": [],
+     "terraform_labels": {},
+     "versioning": [
+      {}
+     ],
+     "website": []
+    }
+   }
+  }
+ ],
+ "configuration": {
+  "provider_config": {
+   "google": {
+    "name": "google",
+    "full_name": "registry.terraform.io/hashicorp/google",
+    "version_constraint": ">= 6.0.0",
+    "expressions": {
+     "project": {
+      "references": [
+       "var.project_id"
+      ]
+     },
+     "region": {
+      "references": [
+       "var.region"
+      ]
+     }
+    }
+   }
+  },
+  "root_module": {
+   "resources": [
+    {
+     "address": "google_compute_firewall.iap_ssh",
+     "mode": "managed",
+     "type": "google_compute_firewall",
+     "name": "iap_ssh",
+     "provider_config_key": "google",
+     "expressions": {
+      "allow": [
+       {
+        "ports": {
+         "constant_value": [
+          "22"
+         ]
+        },
+        "protocol": {
+         "constant_value": "tcp"
+        }
+       }
+      ],
+      "direction": {
+       "constant_value": "INGRESS"
+      },
+      "name": {
+       "constant_value": "tfminder-lab-iap-ssh"
+      },
+      "network": {
+       "references": [
+        "google_compute_network.lab.id",
+        "google_compute_network.lab"
+       ]
+      },
+      "source_ranges": {
+       "constant_value": [
+        "35.235.240.0/20"
+       ]
+      }
+     },
+     "schema_version": 1
+    },
+    {
+     "address": "google_compute_network.lab",
+     "mode": "managed",
+     "type": "google_compute_network",
+     "name": "lab",
+     "provider_config_key": "google",
+     "expressions": {
+      "auto_create_subnetworks": {
+       "constant_value": false
+      },
+      "name": {
+       "constant_value": "tfminder-lab"
+      }
+     },
+     "schema_version": 0
+    },
+    {
+     "address": "google_pubsub_topic.events",
+     "mode": "managed",
+     "type": "google_pubsub_topic",
+     "name": "events",
+     "provider_config_key": "google",
+     "expressions": {
+      "name": {
+       "constant_value": "tfminder-lab-events"
+      }
+     },
+     "schema_version": 0
+    },
+    {
+     "address": "google_storage_bucket.artifacts",
+     "mode": "managed",
+     "type": "google_storage_bucket",
+     "name": "artifacts",
+     "provider_config_key": "google",
+     "expressions": {
+      "force_destroy": {
+       "constant_value": false
+      },
+      "location": {
+       "constant_value": "US"
+      },
+      "name": {
+       "references": [
+        "var.project_id"
+       ]
+      },
+      "public_access_prevention": {
+       "constant_value": "enforced"
+      },
+      "uniform_bucket_level_access": {
+       "constant_value": true
+      },
+      "versioning": [
+       {
+        "enabled": {
+         "constant_value": true
+        }
+       }
+      ]
+     },
+     "schema_version": 3
+    }
+   ],
+   "variables": {
+    "project_id": {},
+    "region": {
+     "default": "us-central1"
+    }
+   }
+  }
+ },
+ "relevant_attributes": [
+  {
+   "resource": "google_compute_network.lab",
+   "attribute": [
+    "id"
+   ]
+  }
+ ],
+ "timestamp": "2026-09-25T22:07:44Z",
+ "applyable": true,
+ "complete": true,
+ "errored": false
+}

@@ -144,3 +144,39 @@ def test_sa_key():
 def test_non_google_resources_ignored():
     plan = make_plan(change("aws_s3_bucket.b", ["delete"], {"bucket": "b"}, None))
     assert ids(plan) == []
+
+
+# -- captured from a real `terraform plan` (Terraform 1.14.4, google provider 6.50.0) -------------
+
+def _real_plan(mutate=None):
+    import pathlib
+
+    from pyrrho.plan import Plan
+
+    doc = json.loads((pathlib.Path(__file__).parent / "fixtures" / "gcp-lab-create.tf1.14.json").read_text())
+    if mutate:
+        mutate(doc)
+    return Plan.from_json(doc, path="real", digest="0" * 64)
+
+
+def test_real_plan_is_clean():
+    # after_unknown marks known list elements as false: "source_ranges": [false]. Not unknown.
+    assert ids(_real_plan()) == []
+
+
+def test_real_plan_with_ssh_opened_to_world():
+    def open_ssh(doc):
+        for rc in doc["resource_changes"]:
+            if rc["type"] == "google_compute_firewall":
+                rc["change"]["after"]["source_ranges"] = ["0.0.0.0/0"]
+
+    assert ids(_real_plan(open_ssh)) == ["GC006"]
+
+
+def test_real_unknown_ranges_still_flagged():
+    def unknown(doc):
+        for rc in doc["resource_changes"]:
+            if rc["type"] == "google_compute_firewall":
+                rc["change"]["after_unknown"]["source_ranges"] = True
+
+    assert ids(_real_plan(unknown)) == ["GC005"]

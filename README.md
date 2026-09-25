@@ -204,8 +204,11 @@ shell and your cloud credentials can run `terraform apply` itself.
   (plan → approve → apply, stale plan refused, tampered plan file refused, destroy limits); the MCP server
   tested over stdio with the official client on both `mcp` 1.x and 2.x. CI runs the same suite against
   Terraform and OpenTofu.
-- **Not yet verified:** the `gcp-guard` rules were written against the documented plan JSON format and
-  provider schema, not captured from live `terraform plan` output against Google Cloud. The drift scan
+- **Verified against a real plan:** `tests/fixtures/gcp-lab-create.tf1.14.json` is a `terraform plan` of
+  `examples/gcp-lab` captured with Terraform 1.14.4 and the google provider 6.50.0; the firewall rules run
+  against it (clean, opened to the world, unknown ranges). It caught a real false positive in 0.1.0.
+- **Not yet verified:** rules that need an existing resource (update-in-place cases) have only been tested
+  against the documented plan format, not captured plans. The drift scan
   inherits strayform's status: it has not been run against a real project yet. Both are next.
 - The audit log is tamper-evident, not tamper-proof. Ship it somewhere the agent cannot write.
 
